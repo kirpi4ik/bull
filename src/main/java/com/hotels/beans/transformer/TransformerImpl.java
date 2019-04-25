@@ -58,17 +58,18 @@ public class TransformerImpl extends AbstractTransformer {
     protected final <T, K> K transform(final T sourceObj, final Class<? extends K> targetClass, final String breadcrumb) {
         final K k;
         final ClassType classType = classUtils.getClassType(targetClass);
+        Constructor constructor;
         if (classType.is(MUTABLE)) {
+            constructor = classUtils.getNoArgsConstructor(targetClass);
             try {
-                k = targetClass.getDeclaredConstructor().newInstance();
+                k = classUtils.getInstance(constructor);
                 injectAllFields(sourceObj, k, breadcrumb);
-            } catch (NoSuchMethodException e) {
-                throw new InvalidBeanException("No default constructor defined for class: " + targetClass.getName(), e);
             } catch (Exception e) {
                 throw new InvalidBeanException(e.getMessage(), e);
             }
         } else {
-            k = injectValues(sourceObj, targetClass, classUtils.getAllArgsConstructor(targetClass), breadcrumb);
+            constructor = classUtils.getAllArgsConstructor(targetClass);
+            k = injectValues(sourceObj, targetClass, constructor, breadcrumb);
             if (classType.is(MIXED)) {
                 injectNotFinalFields(sourceObj, k, breadcrumb);
             }
@@ -101,7 +102,6 @@ public class TransformerImpl extends AbstractTransformer {
      * @return a copy of the source object into the destination object
      * @throws InvalidBeanException {@link InvalidBeanException} if the target object is not compliant with the requirements
      */
-    @SuppressWarnings("unchecked")
     private <T, K> K injectValues(final T sourceObj, final Class<K> targetClass, final Constructor constructor, final String breadcrumb) {
         final Object[] constructorArgs;
         if (canBeInjectedByConstructorParams(constructor, targetClass)) {
@@ -110,7 +110,7 @@ public class TransformerImpl extends AbstractTransformer {
             constructorArgs = getConstructorValuesFromFields(sourceObj, targetClass, breadcrumb);
         }
         try {
-            return (K) constructor.newInstance(constructorArgs);
+            return classUtils.getInstance(constructor, constructorArgs);
         } catch (final Exception e) {
             throw new InvalidBeanException("Constructor invoked with arguments. Expected: " + constructor + "; Found: "
                     + getFormattedConstructorArgs(targetClass, constructorArgs)

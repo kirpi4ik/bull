@@ -23,14 +23,12 @@ import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.max;
+import static java.util.Collections.min;
 import static java.util.Comparator.comparing;
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.toList;
-
-import static org.apache.commons.lang3.ArrayUtils.isEmpty;
-import static org.apache.commons.lang3.ArrayUtils.isNotEmpty;
 
 import static com.hotels.beans.utils.ValidationUtils.notNull;
 import static com.hotels.beans.base.Defaults.defaultValue;
@@ -121,7 +119,7 @@ public final class ClassUtils {
      * @return true if is primitive type array, false otherwise
      */
     public boolean isPrimitiveTypeArray(final Object object) {
-        final String cacheKey = "isPrimitiveTypeArray-" + object.getClass().getCanonicalName();
+        final String cacheKey = "isPrimitiveTypeArray-" + object.getClass().getName();
         return cacheManager.getFromCache(cacheKey, Boolean.class).orElseGet(() -> {
             final Boolean res = object instanceof int[] || object instanceof char[] || object instanceof short[]
                     || object instanceof long[] || object instanceof byte[] || object instanceof float[] || object instanceof double[];
@@ -350,18 +348,77 @@ public final class ClassUtils {
     }
 
     /**
-     * Checks if the destination class uses the Builder pattern.
-     * @param constructor the all args constructor
-     * @param targetClass the destination object class
-     * @param <K> the target object type
-     * @return true if the target class uses the builder pattern
+     * Retrieves all classes defined into the given one.
+     * @param clazz class where we search for a nested class
+     * @return all classes defined into the given one
      */
-    public <K> boolean usesBuilderPattern(final Constructor constructor, final Class<K> targetClass) {
-        final String cacheKey = "UsesBuilderPattern-" + constructor.getDeclaringClass().getName();
-        return cacheManager.getFromCache(cacheKey, Boolean.class).orElseGet(() -> {
-            final boolean res = !isPublic(constructor.getModifiers()) && isNotEmpty(targetClass.getDeclaredClasses());
-            cacheManager.cacheObject(cacheKey, res);
-            return res;
+    public Class[] getDeclaredClasses(final Class<?> clazz) {
+        notNull(clazz, CLAZZ_CANNOT_BE_NULL);
+        String cacheKey = "DeclaredClasses-" + clazz.getName();
+        return cacheManager.getFromCache(cacheKey, Class[].class).orElseGet(() -> {
+            Class[] declaredClasses = clazz.getDeclaredClasses();
+            cacheManager.cacheObject(cacheKey, declaredClasses);
+            return declaredClasses;
+        });
+    }
+
+    /**
+     * Creates an instance of the given class invoking the no args constructor.
+     * @param objectClass the class of the object to return.
+     * @param <T> the class object type.
+     * @return the object instance.
+     * @throws InvalidBeanException in case the object creation fails.
+     */
+    public <T> T getInstance(final Class<? extends T> objectClass) {
+        try {
+            return getInstance(getNoArgsConstructor(objectClass));
+        } catch (final NoSuchMethodException e) {
+            throw new InvalidBeanException("No default constructor defined for class: " + objectClass.getName(), e);
+        } catch (final Exception e) {
+            throw new InvalidBeanException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Creates an instance of the given class invoking the given constructor.
+     * @param constructor the constructor to invoke.
+     * @param constructorArgs the constructor args.
+     * @param <T> the class object type.
+     * @return the object instance.
+     * @throws Exception in case the object creation fails.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getInstance(final Constructor constructor, final Object... constructorArgs) throws Exception {
+        boolean isAccessible = reflectionUtils.isAccessible(constructor, null);
+        try {
+            if (!isAccessible) {
+                constructor.setAccessible(true);
+            }
+            return (T) constructor.newInstance(constructorArgs);
+        } finally {
+            if (!isAccessible) {
+                constructor.setAccessible(false);
+            }
+        }
+    }
+
+    /**
+     * Retrieves the no args constructor.
+     * @param clazz the class from which gets the all arg constructor.
+     * @param <K> the object type
+     * @return the no args constructor
+     */
+    public <K> Constructor getNoArgsConstructor(final Class<K> clazz) {
+        notNull(clazz, CLAZZ_CANNOT_BE_NULL);
+        final String cacheKey = "NoArgsConstructor-" + clazz.getName();
+        return cacheManager.getFromCache(cacheKey, Constructor.class).orElseGet(() -> {
+            Constructor<?>[] declaredConstructors = clazz.getDeclaredConstructors();
+            final Constructor constructor = min(asList(declaredConstructors), comparing(Constructor::getParameterCount));
+            if (constructor.getParameterCount() != 0) {
+                throw new InvalidBeanException("No default constructors available");
+            }
+            cacheManager.cacheObject(cacheKey, constructor);
+            return constructor;
         });
     }
 
@@ -375,24 +432,8 @@ public final class ClassUtils {
         notNull(clazz, CLAZZ_CANNOT_BE_NULL);
         final String cacheKey = "AllArgsConstructor-" + clazz.getName();
         return cacheManager.getFromCache(cacheKey, Constructor.class).orElseGet(() -> {
-            Constructor constructor = getAllArgsConstructor(clazz.getDeclaredConstructors());
-            cacheManager.cacheObject(cacheKey, constructor);
-            return constructor;
-        });
-    }
-
-    /**
-     * Retrieves the all args constructor.
-     * @param constructors class constructors
-     * @return the all args constructor
-     */
-    public Constructor getAllArgsConstructor(final Constructor[] constructors) {
-        if (isEmpty(constructors)) {
-            throw new InvalidBeanException("No constructors available");
-        }
-        final String cacheKey = "AllArgsConstructor-" + constructors[0].getDeclaringClass().getName();
-        return cacheManager.getFromCache(cacheKey, Constructor.class).orElseGet(() -> {
-            final Constructor constructor = max(asList(constructors), comparing(Constructor::getParameterCount));
+            Constructor<?>[] declaredConstructors = clazz.getDeclaredConstructors();
+            final Constructor constructor = max(asList(declaredConstructors), comparing(Constructor::getParameterCount));
             cacheManager.cacheObject(cacheKey, constructor);
             return constructor;
         });
