@@ -477,23 +477,6 @@ public class ImmutableObjectTransformationTest extends AbstractTransformerTest {
         underTest.resetFieldsTransformationSkip();
     }
 
-    @Test
-    public void testMapGenericFieldTypeWorksProperly() {
-        Map<String, Object> mapSource =  new HashMap<String, Object>() {{
-            put("key1", "string1");
-            put("key2", 22);
-            put("key3", Arrays.asList("Larry", "Moe", "Curly"));
-        }};
-
-        final MapWrapper mapWrapperTarget = new BeanUtils().getTransformer()
-                                                    .withFieldMapping(new FieldMapping("map.key1", "map.newKey1"))
-                                                    .withFieldMapping(new FieldMapping("map.key3", "map.newKey3"))
-                                                    .transform(new MapWrapper().setMap(mapSource), MapWrapper.class);
-        isNull(mapWrapperTarget.map.get("key1"));
-        assertEquals(mapSource.get("key1") ,mapWrapperTarget.map.get("newKey1"));
-        assertEquals(mapSource.get("key3") ,mapWrapperTarget.map.get("newKey3"));
-    }
-
     /**
      * Test that the transformer function is applied earlier than the default value.
      */
